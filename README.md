@@ -46,6 +46,14 @@ cp .env.example .env
 # Edit .env and set ANTHROPIC_API_KEY=sk-ant-...
 ```
 
+## Environment variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `ANTHROPIC_API_KEY` | Yes (for live mode) | Anthropic API key for Claude. If unset, the engine runs in dry-run/mock mode. |
+| `DECADE_API_KEY` | No | When set, the HTTP server requires this value in `Authorization: Bearer <key>` or `X-API-Key: <key>` for `/api/morning`, `/api/evening`, and `/api/weekly`. Leave unset for local dev (no auth). |
+| `DECADE_CORS_ORIGIN` | No | Allowed CORS origin for API responses (e.g. `https://yourfrontend.com`). If unset, the server sends `Access-Control-Allow-Origin: *`. |
+
 ## Usage
 
 ```bash

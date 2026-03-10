@@ -8,7 +8,7 @@ import { buildWeeklyPrompt } from "./prompts/weekly.js";
 import { TOOL_DEFINITIONS, handleToolCall } from "./tools.js";
 import { evaluateNBA } from "./evaluator.js";
 import { client, MODEL } from "./config.js";
-import { verboseLog } from "./util.js";
+import { verboseLog, parseLLMJSON, LLMParseError } from "./util.js";
 import { NBASchema, EveningCheckInSchema, WeeklySummarySchema } from "./schema.js";
 
 const MAX_TOOL_ROUNDS = 10;
@@ -16,11 +16,6 @@ const MAX_EVAL_RETRIES = 1;
 
 type MessageParam = Anthropic.Messages.MessageParam;
 type ContentBlockParam = Anthropic.Messages.ContentBlockParam;
-
-function parseJSON<T>(text: string): T {
-  const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-  return JSON.parse(cleaned) as T;
-}
 
 /**
  * Validate that the parsed NBA has the expected shape using Zod.
@@ -140,7 +135,15 @@ export async function generateMorningNBA(profile: UserProfile): Promise<NBAOutpu
 
   verboseLog("  ┌ Agent: generating NBA (with tools)...");
   let text = await agenticLoop(MASTER_SYSTEM_PROMPT, userPrompt, profile);
-  let nba = validateNBA(parseJSON<unknown>(text));
+  let nba: NBAOutput;
+  try {
+    nba = validateNBA(parseLLMJSON<unknown>(text));
+  } catch (err) {
+    if (err instanceof LLMParseError) {
+      console.error("[generateMorningNBA] LLM output parse failed:", err.code, err.rawPreview);
+    }
+    throw err;
+  }
 
   // Self-evaluation loop
   for (let attempt = 0; attempt < MAX_EVAL_RETRIES; attempt++) {
@@ -158,7 +161,14 @@ export async function generateMorningNBA(profile: UserProfile): Promise<NBAOutpu
     // Regenerate with the critique injected
     const retryPrompt = `${userPrompt}\n\nIMPORTANT: Your previous attempt was rejected by the quality evaluator. Here is the critique:\n"${evalResult.critique}"\n\nGenerate a new, improved Next Best Action that addresses this feedback.`;
     text = await agenticLoop(MASTER_SYSTEM_PROMPT, retryPrompt, profile);
-    nba = validateNBA(parseJSON<unknown>(text));
+    try {
+      nba = validateNBA(parseLLMJSON<unknown>(text));
+    } catch (err) {
+      if (err instanceof LLMParseError) {
+        console.error("[generateMorningNBA] Retry LLM output parse failed:", err.code, err.rawPreview);
+      }
+      throw err;
+    }
   }
 
   verboseLog("  └ Returning best attempt");
@@ -192,7 +202,14 @@ export async function generateEveningCheckIn(
     });
     text = response.content[0].type === "text" ? response.content[0].text : "";
   }
-  return EveningCheckInSchema.parse(parseJSON<unknown>(text)) as EveningCheckInOutput;
+  try {
+    return EveningCheckInSchema.parse(parseLLMJSON<unknown>(text)) as EveningCheckInOutput;
+  } catch (err) {
+    if (err instanceof LLMParseError) {
+      console.error("[generateEveningCheckIn] LLM output parse failed:", err.code, err.rawPreview);
+    }
+    throw err;
+  }
 }
 
 /**
@@ -222,5 +239,12 @@ export async function generateWeeklySummary(profile: UserProfile): Promise<Weekl
     });
     text = response.content[0].type === "text" ? response.content[0].text : "";
   }
-  return WeeklySummarySchema.parse(parseJSON<unknown>(text)) as WeeklySummaryOutput;
+  try {
+    return WeeklySummarySchema.parse(parseLLMJSON<unknown>(text)) as WeeklySummaryOutput;
+  } catch (err) {
+    if (err instanceof LLMParseError) {
+      console.error("[generateWeeklySummary] LLM output parse failed:", err.code, err.rawPreview);
+    }
+    throw err;
+  }
 }

@@ -13,6 +13,8 @@ export const TOOL_DEFINITIONS: ToolDef[] = [
     input_schema: {
       type: "object" as const,
       properties: {},
+      required: [] as const,
+      additionalProperties: false,
     },
   },
   {
@@ -27,6 +29,7 @@ export const TOOL_DEFINITIONS: ToolDef[] = [
           description: "Number of recent actions to return. Defaults to 7.",
         },
       },
+      additionalProperties: false,
     },
   },
   {
@@ -36,6 +39,8 @@ export const TOOL_DEFINITIONS: ToolDef[] = [
     input_schema: {
       type: "object" as const,
       properties: {},
+      required: [] as const,
+      additionalProperties: false,
     },
   },
   {
@@ -50,6 +55,7 @@ export const TOOL_DEFINITIONS: ToolDef[] = [
           description: "Number of recent check-ins to consider. Defaults to 7.",
         },
       },
+      additionalProperties: false,
     },
   },
   {
@@ -59,6 +65,8 @@ export const TOOL_DEFINITIONS: ToolDef[] = [
     input_schema: {
       type: "object" as const,
       properties: {},
+      required: [] as const,
+      additionalProperties: false,
     },
   },
   {
@@ -68,6 +76,8 @@ export const TOOL_DEFINITIONS: ToolDef[] = [
     input_schema: {
       type: "object" as const,
       properties: {},
+      required: [] as const,
+      additionalProperties: false,
     },
   },
   {
@@ -82,6 +92,7 @@ export const TOOL_DEFINITIONS: ToolDef[] = [
           description: "Number of recent notes to return. Defaults to 5.",
         },
       },
+      additionalProperties: false,
     },
   },
   {
@@ -91,6 +102,8 @@ export const TOOL_DEFINITIONS: ToolDef[] = [
     input_schema: {
       type: "object" as const,
       properties: {},
+      required: [] as const,
+      additionalProperties: false,
     },
   },
 ];

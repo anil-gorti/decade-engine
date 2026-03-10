@@ -5,6 +5,7 @@ import { buildEveningPrompt } from "./prompts/evening.js";
 import { buildWeeklyPrompt } from "./prompts/weekly.js";
 import { MASTER_SYSTEM_PROMPT, EVENING_SYSTEM_PROMPT, WEEKLY_SYSTEM_PROMPT } from "./prompts/system.js";
 import { loadProfile, listUsers, recordAction, recordCheckIn, recordCoachNote } from "./store.js";
+import { getLastActionSummary, getDefaultEveningUserResponse } from "./shared.js";
 import type { EngineMode } from "./types.js";
 import { today, setVerbose, setMockDate } from "./util.js";
 
@@ -58,15 +59,8 @@ async function runMorning(userName: string) {
 async function runEvening(userName: string) {
   const profile = loadProfile(userName);
 
-  const lastAction = profile.action_history[profile.action_history.length - 1];
-  const actionSummary = lastAction?.action ?? "15 minute post-lunch walk";
-
-  const responses: Record<string, string> = {
-    rahul: "Yeah did it, walked for about 12 mins after lunch",
-    priya: "Couldn't today, the house was too chaotic with guests",
-    vikram: "No, had back to back calls and then crashed",
-  };
-  const userResponse = responses[userName] ?? "Did it";
+  const actionSummary = getLastActionSummary(profile);
+  const userResponse = getDefaultEveningUserResponse(userName);
 
   console.log(`\n${DIVIDER}`);
   console.log(`EVENING CHECK-IN \u2014 ${profile.user.name}`);

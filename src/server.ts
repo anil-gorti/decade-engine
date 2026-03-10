@@ -6,20 +6,39 @@ import { buildEveningPrompt } from "./prompts/evening.js";
 import { buildWeeklyPrompt } from "./prompts/weekly.js";
 import { MASTER_SYSTEM_PROMPT, EVENING_SYSTEM_PROMPT } from "./prompts/system.js";
 import { loadProfile, listUsers, recordAction, recordCheckIn, hasActionToday } from "./store.js";
-import { MAX_BODY_BYTES } from "./config.js";
+import { getLastActionSummary, getDefaultEveningUserResponse } from "./shared.js";
+import { MAX_BODY_BYTES, DECADE_API_KEY, DECADE_CORS_ORIGIN } from "./config.js";
 import { today } from "./util.js";
 
 const PORT = 3456;
 const DRY_RUN = !process.env.ANTHROPIC_API_KEY;
 
+const CORS_ORIGIN = DECADE_CORS_ORIGIN || "*";
+
+function corsHeaders(): Record<string, string> {
+  return {
+    "Access-Control-Allow-Origin": CORS_ORIGIN,
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-API-Key",
+  };
+}
+
 function json(res: http.ServerResponse, data: unknown, status = 200) {
   res.writeHead(status, {
     "Content-Type": "application/json",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    ...corsHeaders(),
   });
   res.end(JSON.stringify(data, null, 2));
+}
+
+/** When DECADE_API_KEY is set, require Bearer or X-API-Key. Returns null if authorized. */
+function checkAuth(req: http.IncomingMessage): string | null {
+  if (!DECADE_API_KEY) return null;
+  const auth = req.headers["authorization"];
+  const apiKey = req.headers["x-api-key"];
+  const token = (typeof auth === "string" && auth.startsWith("Bearer ") ? auth.slice(7) : null) ?? (typeof apiKey === "string" ? apiKey : null);
+  if (!token || token !== DECADE_API_KEY) return "Missing or invalid API key. Set Authorization: Bearer <key> or X-API-Key: <key>.";
+  return null;
 }
 
 function readBody(req: http.IncomingMessage): Promise<string> {
@@ -167,6 +186,11 @@ const server = http.createServer(async (req, res) => {
 
   const morningMatch = path.match(/^\/api\/morning\/(\w+)$/);
   if (morningMatch) {
+    const authError = checkAuth(req);
+    if (authError) {
+      json(res, { error: authError }, 401);
+      return;
+    }
     const userName = morningMatch[1];
     let profile;
     try { profile = loadProfile(userName); } catch { json(res, { error: "Unknown user" }, 404); return; }
@@ -204,14 +228,18 @@ const server = http.createServer(async (req, res) => {
 
   const eveningMatch = path.match(/^\/api\/evening\/(\w+)$/);
   if (eveningMatch) {
+    const authError = checkAuth(req);
+    if (authError) {
+      json(res, { error: authError }, 401);
+      return;
+    }
     const userName = eveningMatch[1];
     let profile;
     try { profile = loadProfile(userName); } catch { json(res, { error: "Unknown user" }, 404); return; }
 
-    const lastAction = profile.action_history[profile.action_history.length - 1];
-    const actionSummary = lastAction?.action ?? "15 minute post-lunch walk";
+    const actionSummary = getLastActionSummary(profile);
 
-    // Accept user response via POST body, or fall back to mock data for GET
+    // Accept user response via POST body, or fall back to default (e.g. GET) for testing
     let userResponse: string;
     let energyLevel = 3;
     let sleepLastNight = profile.lifestyle.sleep_hours_avg;
@@ -228,13 +256,7 @@ const server = http.createServer(async (req, res) => {
       if (body.energy_level !== undefined) energyLevel = Math.min(5, Math.max(1, body.energy_level));
       if (body.sleep_last_night !== undefined) sleepLastNight = body.sleep_last_night;
     } else {
-      // GET fallback with mock responses for testing
-      const mockResponses: Record<string, string> = {
-        rahul: "Yeah did it, walked for about 12 mins after lunch",
-        priya: "Couldn't today, the house was too chaotic with guests",
-        vikram: "No, had back to back calls and then crashed",
-      };
-      userResponse = mockResponses[userName] ?? "Did it";
+      userResponse = getDefaultEveningUserResponse(userName);
     }
 
     if (DRY_RUN) {
@@ -266,6 +288,11 @@ const server = http.createServer(async (req, res) => {
 
   const weeklyMatch = path.match(/^\/api\/weekly\/(\w+)$/);
   if (weeklyMatch) {
+    const authError = checkAuth(req);
+    if (authError) {
+      json(res, { error: authError }, 401);
+      return;
+    }
     const userName = weeklyMatch[1];
     let profile;
     try { profile = loadProfile(userName); } catch { json(res, { error: "Unknown user" }, 404); return; }
