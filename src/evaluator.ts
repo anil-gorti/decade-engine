@@ -1,5 +1,6 @@
 import type { NBAOutput, EvalResult, UserProfile } from "./types.js";
 import { client, MODEL } from "./config.js";
+import { EvalResultSchema } from "./schema.js";
 
 const EVAL_SYSTEM_PROMPT = `You are a quality evaluator for a health coaching AI called Decade. Your job is to review a generated Next Best Action (NBA) and determine if it meets the quality bar before it gets sent to the user.
 
@@ -8,7 +9,7 @@ Evaluate the NBA against these criteria:
 2. NO REPETITION: The action must not be the same as yesterday's action. Similar category is fine, but the exact same action is not.
 3. CHAOS-REALISTIC: The action must be feasible given the user's chaos context (travel, festivals, heavy work week, etc.). A cooking-based action during travel fails.
 4. DIFFICULTY MATCH: If the user has a low completion rate or low energy, the action should be easy. Don't assign a hard action to someone who's been struggling.
-5. TONE: The message should sound like a coach texting on WhatsApp, not a medical report. No bullet points, no clinical language, no hollow praise.
+5. TONE: The message should sound like a coach texting on WhatsApp, not a medical report. No bullet points, no clinical language, no hollow praise. Ensure tone matches their motivation style (e.g. inspiring for 'toward', cautious/protective for 'away_from').
 
 Return ONLY valid JSON with two fields:
 - "pass": boolean
@@ -36,23 +37,31 @@ CONTEXT:
 - Travelling: ${profile.chaos_context.travel}
 - Festival: ${profile.chaos_context.festival_or_event ?? "None"}
 - Work intensity: ${profile.chaos_context.work_intensity}
+- Motivation Style: ${profile.identity.motivation_style}
 
 Does this NBA pass all 5 criteria? Return JSON with "pass" and "critique".`;
 
-  const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: 256,
-    system: EVAL_SYSTEM_PROMPT,
-    messages: [{ role: "user", content: evalPrompt }],
-  });
-
-  const text = response.content[0].type === "text" ? response.content[0].text : "";
+  let text: string;
+  if (!process.env.ANTHROPIC_API_KEY) {
+    // Mock response
+    await new Promise((r) => setTimeout(r, 800));
+    text = JSON.stringify({ pass: true, critique: "" });
+  } else {
+    const response = await client.messages.create({
+      model: MODEL,
+      max_tokens: 256,
+      system: EVAL_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: evalPrompt }],
+    });
+    text = response.content[0].type === "text" ? response.content[0].text : "";
+  }
   const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
 
   try {
-    return JSON.parse(cleaned) as EvalResult;
-  } catch {
-    // If we can't parse the eval, assume it passes (don't block on eval failure)
-    return { pass: true, critique: "" };
+    return EvalResultSchema.parse(JSON.parse(cleaned)) as EvalResult;
+  } catch (err) {
+    // Fail-closed approach: If eval fails format validation, reject the NBA
+    console.error("Eval parse error (defaulting to FAIL):", err);
+    return { pass: false, critique: "Internal evaluation error: could not validate action structure. Please generate a simpler action." };
   }
 }

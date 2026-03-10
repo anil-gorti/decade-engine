@@ -7,6 +7,7 @@ import { buildWeeklyPrompt } from "./prompts/weekly.js";
 import { MASTER_SYSTEM_PROMPT, EVENING_SYSTEM_PROMPT } from "./prompts/system.js";
 import { loadProfile, listUsers, recordAction, recordCheckIn, hasActionToday } from "./store.js";
 import { MAX_BODY_BYTES } from "./config.js";
+import { today } from "./util.js";
 
 const PORT = 3456;
 const DRY_RUN = !process.env.ANTHROPIC_API_KEY;
@@ -39,9 +40,6 @@ function readBody(req: http.IncomingMessage): Promise<string> {
   });
 }
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function html(res: http.ServerResponse, body: string) {
   res.writeHead(200, { "Content-Type": "text/html" });
@@ -194,7 +192,7 @@ const server = http.createServer(async (req, res) => {
     const result = await generateMorningNBA(profile);
 
     // Record the action so history accumulates
-    recordAction(userName, {
+    await recordAction(userName, {
       date: today(),
       action: result.metadata.action_summary,
       category: result.metadata.action_category,
@@ -218,11 +216,13 @@ const server = http.createServer(async (req, res) => {
     let energyLevel = 3;
     let sleepLastNight = profile.lifestyle.sleep_hours_avg;
     if (req.method === "POST") {
-      const body = JSON.parse(await readBody(req)) as {
-        response?: string;
-        energy_level?: number;
-        sleep_last_night?: number;
-      };
+      let body: { response?: string; energy_level?: number; sleep_last_night?: number };
+      try {
+        body = JSON.parse(await readBody(req));
+      } catch {
+        json(res, { error: "Invalid JSON in request body" }, 400);
+        return;
+      }
       userResponse = body.response ?? "";
       if (!userResponse) { json(res, { error: "Missing 'response' in POST body" }, 400); return; }
       if (body.energy_level !== undefined) energyLevel = Math.min(5, Math.max(1, body.energy_level));
@@ -252,7 +252,7 @@ const server = http.createServer(async (req, res) => {
     const result = await generateEveningCheckIn(actionSummary, userResponse);
 
     // Record the check-in so history accumulates
-    recordCheckIn(userName, {
+    await recordCheckIn(userName, {
       date: today(),
       action_taken: result.action_taken,
       notes: userResponse,

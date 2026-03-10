@@ -4,18 +4,23 @@ import { buildMorningPrompt } from "./prompts/morning.js";
 import { buildEveningPrompt } from "./prompts/evening.js";
 import { buildWeeklyPrompt } from "./prompts/weekly.js";
 import { MASTER_SYSTEM_PROMPT, EVENING_SYSTEM_PROMPT, WEEKLY_SYSTEM_PROMPT } from "./prompts/system.js";
-import { loadProfile, listUsers, recordAction, recordCheckIn } from "./store.js";
+import { loadProfile, listUsers, recordAction, recordCheckIn, recordCoachNote } from "./store.js";
 import type { EngineMode } from "./types.js";
+import { today, setVerbose, setMockDate } from "./util.js";
 
 const DIVIDER = "\u2500".repeat(60);
-const DRY_RUN = process.argv.includes("--dry-run") || !process.env.ANTHROPIC_API_KEY;
+const DRY_RUN = process.argv.includes("--dry-run");
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+const SIMULATE_WEEK = process.argv.includes("--simulate-week");
+const MOCK_MODE = !process.env.ANTHROPIC_API_KEY && !DRY_RUN;
 
-if (DRY_RUN && !process.argv.includes("--dry-run")) {
-  console.log("No ANTHROPIC_API_KEY found. Running in dry-run mode (showing prompts).\n");
+// CLI always runs verbose so you see tool calls and eval results
+setVerbose(true);
+
+if (MOCK_MODE) {
+  console.log("⚠️ No ANTHROPIC_API_KEY found. Running in MOCK LLM mode (simulating responses).\n");
+} else if (DRY_RUN) {
+  console.log("Running in dry-run mode (showing prompts only).\n");
 }
 
 async function runMorning(userName: string) {
@@ -40,7 +45,7 @@ async function runMorning(userName: string) {
   console.log("Metadata:", JSON.stringify(result.metadata, null, 2));
 
   // Persist the action
-  recordAction(userName, {
+  await recordAction(userName, {
     date: today(),
     action: result.metadata.action_summary,
     category: result.metadata.action_category,
@@ -80,7 +85,7 @@ async function runEvening(userName: string) {
   console.log(`Action taken: ${result.action_taken}`);
 
   // Persist the check-in
-  recordCheckIn(userName, {
+  await recordCheckIn(userName, {
     date: today(),
     action_taken: result.action_taken,
     notes: userResponse,
@@ -88,6 +93,11 @@ async function runEvening(userName: string) {
     sleep_last_night: profile.lifestyle.sleep_hours_avg,
   });
   console.log(`\u2713 Check-in recorded to data/${userName}.json`);
+
+  if (result.coach_note) {
+    await recordCoachNote(userName, result.coach_note);
+    console.log(`\u2713 Coach note recorded to data/${userName}.json`);
+  }
 
   return result;
 }
@@ -119,17 +129,34 @@ async function main() {
   const users = userArg ? [userArg] : listUsers();
 
   console.log(`Decade Engine v1.0`);
-  console.log(`Mode: ${mode} | Users: ${users.join(", ")} | Dry run: ${DRY_RUN}\n`);
+  console.log(`Mode: ${mode} | Users: ${users.join(", ")} | Dry run: ${DRY_RUN} | Mock: ${MOCK_MODE} | Simulate Week: ${SIMULATE_WEEK}\n`);
 
-  for (const userName of users) {
-    if (mode === "morning" || mode === "all") {
-      await runMorning(userName);
+  if (SIMULATE_WEEK) {
+    for (const userName of users) {
+      console.log(`\nStarting 7-day simulation for ${userName}...\n`);
+      for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
+        const d = new Date();
+        d.setDate(d.getDate() + dayOffset);
+        const mockDateString = d.toISOString().slice(0, 10);
+        setMockDate(mockDateString);
+        console.log(`\n\n=== DAY ${dayOffset + 1} (${mockDateString}) ===`);
+        await runMorning(userName);
+        console.log(`\nFast forwarding to evening...`);
+        await runEvening(userName);
+      }
+      setMockDate(""); // reset
     }
-    if (mode === "evening" || mode === "all") {
-      await runEvening(userName);
-    }
-    if (mode === "weekly" || mode === "all") {
-      await runWeekly(userName);
+  } else {
+    for (const userName of users) {
+      if (mode === "morning" || mode === "all") {
+        await runMorning(userName);
+      }
+      if (mode === "evening" || mode === "all") {
+        await runEvening(userName);
+      }
+      if (mode === "weekly" || mode === "all") {
+        await runWeekly(userName);
+      }
     }
   }
 

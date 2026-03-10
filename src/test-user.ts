@@ -58,6 +58,7 @@ export const testUserRahul: UserProfile = {
     { date: "2026-03-08", action: "2 glasses of water before lunch", category: "hydration" },
     { date: "2026-03-09", action: "Choose dal rice over ordering pizza", category: "nutrition" },
   ],
+  coach_notes: [],
   focus_biomarker: "",
 };
 
@@ -115,6 +116,7 @@ export const testUserPriya: UserProfile = {
     { date: "2026-03-08", action: "Take stairs instead of elevator all day", category: "movement" },
     { date: "2026-03-09", action: "Eat one serving of sabzi before sweets", category: "nutrition" },
   ],
+  coach_notes: [],
   focus_biomarker: "",
 };
 
@@ -172,6 +174,7 @@ export const testUserVikram: UserProfile = {
     { date: "2026-03-07", action: "Order tandoori instead of butter chicken", category: "nutrition" },
     { date: "2026-03-08", action: "10 min morning walk before meetings", category: "movement" },
   ],
+  coach_notes: [],
   focus_biomarker: "",
 };
 

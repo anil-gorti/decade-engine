@@ -1,5 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import type { UserProfile, ActionCategory } from "./types.js";
+import type { UserProfile } from "./types.js";
 
 // ── Tool schemas for the Anthropic API ──
 
@@ -70,6 +70,29 @@ export const TOOL_DEFINITIONS: ToolDef[] = [
       properties: {},
     },
   },
+  {
+    name: "get_coach_notes",
+    description:
+      "Returns private notes left by the coach from previous evening check-ins. Useful for continuity and remembering user excuses or patterns.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        count: {
+          type: "number",
+          description: "Number of recent notes to return. Defaults to 5.",
+        },
+      },
+    },
+  },
+  {
+    name: "get_weather_aqi",
+    description:
+      "Returns the current weather and Air Quality Index (AQI) for the user's city.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+    },
+  },
 ];
 
 // ── Tool handlers ──
@@ -97,6 +120,10 @@ export function handleToolCall(
       return handleCategorySuccess(profile);
     case "get_energy_trend":
       return handleEnergyTrend(profile);
+    case "get_coach_notes":
+      return handleCoachNotes(profile, input.count ?? 5);
+    case "get_weather_aqi":
+      return handleWeatherAQI(profile);
     default:
       return JSON.stringify({ error: `Unknown tool: ${toolName}` });
   }
@@ -203,4 +230,30 @@ function handleEnergyTrend(profile: UserProfile): string {
       sleep: c.sleep_last_night,
     })),
   });
+}
+
+function handleCoachNotes(profile: UserProfile, count: number): string {
+  if (!profile.coach_notes || profile.coach_notes.length === 0) {
+    return JSON.stringify({ notes: [] });
+  }
+  return JSON.stringify({
+    notes: profile.coach_notes.slice(-count),
+  });
+}
+
+function handleWeatherAQI(profile: UserProfile): string {
+  // Mock external API for weather and AQI based on city
+  const city = profile.user.city.toLowerCase();
+
+  if (city.includes("delhi") || city.includes("new delhi")) {
+    return JSON.stringify({ temperature: 32, condition: "Sunny", aqi: 280, aqi_category: "Poor (Avoid outdoor exercise)" });
+  }
+  if (city.includes("mumbai")) {
+    return JSON.stringify({ temperature: 31, condition: "Humid", aqi: 150, aqi_category: "Moderate" });
+  }
+  if (city.includes("bangalore") || city.includes("bengaluru")) {
+    return JSON.stringify({ temperature: 26, condition: "Partly Cloudy", aqi: 85, aqi_category: "Satisfactory" });
+  }
+
+  return JSON.stringify({ temperature: 28, condition: "Clear", aqi: 100, aqi_category: "Moderate" });
 }

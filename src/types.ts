@@ -60,6 +60,7 @@ export interface UserProfile {
 
   recent_checkins: CheckIn[];
   action_history: ActionRecord[];
+  coach_notes: string[];
   focus_biomarker: string;
 }
 
@@ -102,6 +103,7 @@ export interface NBAOutput {
 export interface EveningCheckInOutput {
   message: string;
   action_taken: boolean;
+  coach_note?: string;
 }
 
 export interface WeeklySummaryOutput {

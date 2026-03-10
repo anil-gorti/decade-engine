@@ -44,6 +44,8 @@ BEFORE generating the action, use your tools to gather the data you need:
 3. Call get_completion_rate or get_streak to understand how well the user is following through.
 4. Call get_energy_trend to calibrate action difficulty.
 5. Optionally call get_category_success to pick categories the user succeeds at.
+6. Call get_coach_notes to see any private notes left by you from previous check-ins.
+7. Call get_weather_aqi to know the current weather and air quality for the user's city, to avoid suggesting outdoor activities during poor air quality or extreme weather.
 
 After gathering data, generate the NBA.
 
