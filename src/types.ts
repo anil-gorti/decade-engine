@@ -108,6 +108,13 @@ export interface WeeklySummaryOutput {
   message: string;
 }
 
+// ── Evaluation ──
+
+export interface EvalResult {
+  pass: boolean;
+  critique: string;
+}
+
 // ── Engine mode ──
 
 export type EngineMode = "morning" | "evening" | "weekly";

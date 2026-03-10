@@ -3,21 +3,16 @@ import { buildChaosModifier } from "../logic/chaos.js";
 
 /**
  * Builds the user prompt for the morning Next Best Action call.
+ *
+ * This is now a slimmed-down prompt. The model uses tools to pull
+ * biomarker data, action history, streaks, and energy trends on demand.
  */
 export function buildMorningPrompt(profile: UserProfile): string {
-  const { user, identity, biomarkers, lifestyle, chaos_context, recent_checkins, action_history, focus_biomarker } = profile;
-
-  const last3Checkins = recent_checkins.slice(-3).map((c) =>
-    `${c.date}: action taken = ${c.action_taken}, energy = ${c.energy_level}/5, notes: "${c.notes}"`
-  ).join("\n");
-
-  const recentActions = action_history.slice(-7).map((a) =>
-    `${a.date}: ${a.action} (${a.category})`
-  ).join("\n");
+  const { user, identity, lifestyle, chaos_context, focus_biomarker } = profile;
 
   const chaosModifier = buildChaosModifier(chaos_context);
 
-  return `Here is the user profile for today's Next Best Action:
+  return `Generate today's Next Best Action for this user.
 
 USER: ${user.name}, ${user.age}, ${user.city}
 OCCUPATION: ${user.occupation}
@@ -25,17 +20,6 @@ HOUSEHOLD: ${user.household}
 PROUD AT 60: "${identity.proud_at_60_statement}"
 PRIMARY FEAR: "${identity.primary_fear}"
 MOTIVATION STYLE: ${identity.motivation_style}
-
-KEY BIOMARKERS:
-- HbA1c: ${biomarkers.hba1c.value}% (${biomarkers.hba1c.flag}) — last tested ${biomarkers.hba1c.date}
-- Fasting Glucose: ${biomarkers.fasting_glucose.value} mg/dL (${biomarkers.fasting_glucose.flag})
-- LDL: ${biomarkers.ldl.value} mg/dL (${biomarkers.ldl.flag})
-- HDL: ${biomarkers.hdl.value} mg/dL (${biomarkers.hdl.flag})
-- Triglycerides: ${biomarkers.triglycerides.value} mg/dL (${biomarkers.triglycerides.flag})
-- Vitamin D: ${biomarkers.vitamin_d.value} ng/mL (${biomarkers.vitamin_d.flag})
-- TSH: ${biomarkers.tsh.value} uIU/mL (${biomarkers.tsh.flag})
-- Creatinine: ${biomarkers.creatinine.value} mg/dL (${biomarkers.creatinine.flag})
-- Uric Acid: ${biomarkers.uric_acid.value} mg/dL (${biomarkers.uric_acid.flag})
 
 LIFESTYLE SNAPSHOT:
 - Sleep: ${lifestyle.sleep_hours_avg} hours avg, quality ${lifestyle.sleep_quality}
@@ -52,15 +36,18 @@ THIS WEEK'S CHAOS CONTEXT:
 - Work intensity: ${chaos_context.work_intensity}
 - Family demands: ${chaos_context.family_demands}
 ${chaosModifier}
-LAST 3 DAYS:
-${last3Checkins || "No check-ins yet."}
-
-RECENT ACTION HISTORY (avoid repeating):
-${recentActions || "No actions yet."}
-
 FOCUS BIOMARKER TODAY: ${focus_biomarker}
 
-Generate today's Next Best Action. Return JSON with "message" and "metadata" fields.
+BEFORE generating the action, use your tools to gather the data you need:
+1. Call get_flagged_biomarkers to see which biomarkers need attention and their values.
+2. Call get_recent_actions to see what was already recommended (avoid repeating).
+3. Call get_completion_rate or get_streak to understand how well the user is following through.
+4. Call get_energy_trend to calibrate action difficulty.
+5. Optionally call get_category_success to pick categories the user succeeds at.
+
+After gathering data, generate the NBA.
+
+Return JSON with "message" and "metadata" fields.
 The "message" is the WhatsApp text (3-5 sentences).
 The "metadata" has: action_category, action_summary (10 words max), biomarker_targeted, chaos_adjusted (boolean), identity_anchor_used (boolean), difficulty_level, estimated_minutes.
 

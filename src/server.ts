@@ -5,14 +5,33 @@ import { buildMorningPrompt } from "./prompts/morning.js";
 import { buildEveningPrompt } from "./prompts/evening.js";
 import { buildWeeklyPrompt } from "./prompts/weekly.js";
 import { MASTER_SYSTEM_PROMPT, EVENING_SYSTEM_PROMPT } from "./prompts/system.js";
-import { TEST_USERS } from "./test-user.js";
+import { loadProfile, saveProfile, listUsers, recordAction, recordCheckIn } from "./store.js";
+import type { ActionCategory } from "./types.js";
 
 const PORT = 3456;
 const DRY_RUN = !process.env.ANTHROPIC_API_KEY;
 
 function json(res: http.ServerResponse, data: unknown, status = 200) {
-  res.writeHead(status, { "Content-Type": "application/json" });
+  res.writeHead(status, {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+  });
   res.end(JSON.stringify(data, null, 2));
+}
+
+function readBody(req: http.IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => resolve(body));
+    req.on("error", reject);
+  });
+}
+
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function html(res: http.ServerResponse, body: string) {
@@ -24,17 +43,31 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
   const path = url.pathname;
 
+  // Handle CORS preflight
+  if (req.method === "OPTIONS") {
+    json(res, {}, 204);
+    return;
+  }
+
+  try {
+
   if (path === "/") {
-    const users = Object.entries(TEST_USERS).map(([key, u]) => ({
-      key,
-      name: u.user.name,
-      city: u.user.city,
-      focusBiomarker: determineFocusBiomarker(u),
-      hba1c: u.biomarkers.hba1c.value,
-      ldl: u.biomarkers.ldl.value,
-      vitD: u.biomarkers.vitamin_d.value,
-      chaosContext: u.chaos_context.this_week_description,
-    }));
+    const userKeys = listUsers();
+    const users = userKeys.map((key) => {
+      const u = loadProfile(key);
+      return {
+        key,
+        name: u.user.name,
+        city: u.user.city,
+        focusBiomarker: determineFocusBiomarker(u),
+        hba1c: u.biomarkers.hba1c.value,
+        ldl: u.biomarkers.ldl.value,
+        vitD: u.biomarkers.vitamin_d.value,
+        chaosContext: u.chaos_context.this_week_description,
+        checkins: u.recent_checkins.length,
+        actions: u.action_history.length,
+      };
+    });
 
     html(res, `<!DOCTYPE html>
 <html lang="en">
@@ -121,15 +154,15 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (path === "/api/health") {
-    json(res, { status: "ok", mode: DRY_RUN ? "dry-run" : "live", users: Object.keys(TEST_USERS) });
+    json(res, { status: "ok", mode: DRY_RUN ? "dry-run" : "live", users: listUsers() });
     return;
   }
 
   const morningMatch = path.match(/^\/api\/morning\/(\w+)$/);
   if (morningMatch) {
     const userName = morningMatch[1];
-    const profile = TEST_USERS[userName as keyof typeof TEST_USERS];
-    if (!profile) { json(res, { error: "Unknown user" }, 404); return; }
+    let profile;
+    try { profile = loadProfile(userName); } catch { json(res, { error: "Unknown user" }, 404); return; }
 
     if (DRY_RUN) {
       profile.focus_biomarker = determineFocusBiomarker(profile);
@@ -144,6 +177,14 @@ const server = http.createServer(async (req, res) => {
     }
 
     const result = await generateMorningNBA(profile);
+
+    // Record the action so history accumulates
+    recordAction(userName, {
+      date: today(),
+      action: result.metadata.action_summary,
+      category: result.metadata.action_category,
+    });
+
     json(res, result);
     return;
   }
@@ -151,30 +192,51 @@ const server = http.createServer(async (req, res) => {
   const eveningMatch = path.match(/^\/api\/evening\/(\w+)$/);
   if (eveningMatch) {
     const userName = eveningMatch[1];
-    const profile = TEST_USERS[userName as keyof typeof TEST_USERS];
-    if (!profile) { json(res, { error: "Unknown user" }, 404); return; }
+    let profile;
+    try { profile = loadProfile(userName); } catch { json(res, { error: "Unknown user" }, 404); return; }
 
     const lastAction = profile.action_history[profile.action_history.length - 1];
     const actionSummary = lastAction?.action ?? "15 minute post-lunch walk";
-    const mockResponses: Record<string, string> = {
-      rahul: "Yeah did it, walked for about 12 mins after lunch",
-      priya: "Couldn't today, the house was too chaotic with guests",
-      vikram: "No, had back to back calls and then crashed",
-    };
+
+    // Accept user response via POST body, or fall back to mock data for GET
+    let userResponse: string;
+    if (req.method === "POST") {
+      const body = JSON.parse(await readBody(req)) as { response?: string };
+      userResponse = body.response ?? "";
+      if (!userResponse) { json(res, { error: "Missing 'response' in POST body" }, 400); return; }
+    } else {
+      // GET fallback with mock responses for testing
+      const mockResponses: Record<string, string> = {
+        rahul: "Yeah did it, walked for about 12 mins after lunch",
+        priya: "Couldn't today, the house was too chaotic with guests",
+        vikram: "No, had back to back calls and then crashed",
+      };
+      userResponse = mockResponses[userName] ?? "Did it";
+    }
 
     if (DRY_RUN) {
       json(res, {
         mode: "dry-run",
         user: profile.user.name,
         action_summary: actionSummary,
-        user_response: mockResponses[userName],
-        prompt_preview: buildEveningPrompt(actionSummary, mockResponses[userName]),
+        user_response: userResponse,
+        prompt_preview: buildEveningPrompt(actionSummary, userResponse),
         system_prompt: EVENING_SYSTEM_PROMPT,
       });
       return;
     }
 
-    const result = await generateEveningCheckIn(actionSummary, mockResponses[userName]);
+    const result = await generateEveningCheckIn(actionSummary, userResponse);
+
+    // Record the check-in so history accumulates
+    recordCheckIn(userName, {
+      date: today(),
+      action_taken: result.action_taken,
+      notes: userResponse,
+      energy_level: 3, // default — could accept from POST body
+      sleep_last_night: profile.lifestyle.sleep_hours_avg, // default
+    });
+
     json(res, result);
     return;
   }
@@ -182,8 +244,8 @@ const server = http.createServer(async (req, res) => {
   const weeklyMatch = path.match(/^\/api\/weekly\/(\w+)$/);
   if (weeklyMatch) {
     const userName = weeklyMatch[1];
-    const profile = TEST_USERS[userName as keyof typeof TEST_USERS];
-    if (!profile) { json(res, { error: "Unknown user" }, 404); return; }
+    let profile;
+    try { profile = loadProfile(userName); } catch { json(res, { error: "Unknown user" }, 404); return; }
 
     if (DRY_RUN) {
       profile.focus_biomarker = determineFocusBiomarker(profile);
@@ -202,6 +264,11 @@ const server = http.createServer(async (req, res) => {
   }
 
   json(res, { error: "Not found" }, 404);
+
+  } catch (err) {
+    console.error("Request error:", err);
+    json(res, { error: "Internal server error" }, 500);
+  }
 });
 
 server.listen(PORT, () => {
