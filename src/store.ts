@@ -47,7 +47,7 @@ export function saveProfile(userName: string, profile: UserProfile): void {
 }
 
 /**
- * List all known user names (from disk, falling back to test defaults).
+ * List all known user names — merges test defaults with any on-disk profiles.
  */
 export function listUsers(): string[] {
   ensureDataDir();
@@ -55,10 +55,22 @@ export function listUsers(): string[] {
     .filter((f) => f.endsWith(".json"))
     .map((f) => f.replace(".json", ""));
 
-  if (onDisk.length > 0) return onDisk;
+  const testKeys = Object.keys(TEST_USERS);
+  const merged = new Set([...testKeys, ...onDisk]);
+  return [...merged];
+}
 
-  // First run — return test user keys
-  return Object.keys(TEST_USERS);
+/**
+ * Check if the user already has an action recorded for today.
+ */
+export function hasActionToday(userName: string): boolean {
+  const today = new Date().toISOString().slice(0, 10);
+  try {
+    const profile = loadProfile(userName);
+    return profile.action_history.some((a) => a.date === today);
+  } catch {
+    return false;
+  }
 }
 
 /**

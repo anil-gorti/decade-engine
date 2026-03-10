@@ -5,8 +5,8 @@ import { buildMorningPrompt } from "./prompts/morning.js";
 import { buildEveningPrompt } from "./prompts/evening.js";
 import { buildWeeklyPrompt } from "./prompts/weekly.js";
 import { MASTER_SYSTEM_PROMPT, EVENING_SYSTEM_PROMPT } from "./prompts/system.js";
-import { loadProfile, saveProfile, listUsers, recordAction, recordCheckIn } from "./store.js";
-import type { ActionCategory } from "./types.js";
+import { loadProfile, listUsers, recordAction, recordCheckIn, hasActionToday } from "./store.js";
+import { MAX_BODY_BYTES } from "./config.js";
 
 const PORT = 3456;
 const DRY_RUN = !process.env.ANTHROPIC_API_KEY;
@@ -24,7 +24,16 @@ function json(res: http.ServerResponse, data: unknown, status = 200) {
 function readBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     let body = "";
-    req.on("data", (chunk) => (body += chunk));
+    let bytes = 0;
+    req.on("data", (chunk: Buffer | string) => {
+      bytes += typeof chunk === "string" ? Buffer.byteLength(chunk) : chunk.length;
+      if (bytes > MAX_BODY_BYTES) {
+        req.destroy();
+        reject(new Error("Request body too large"));
+        return;
+      }
+      body += chunk;
+    });
     req.on("end", () => resolve(body));
     req.on("error", reject);
   });
@@ -176,6 +185,12 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // One NBA per user per day
+    if (hasActionToday(userName)) {
+      json(res, { error: "NBA already generated today. Check back tomorrow morning." }, 429);
+      return;
+    }
+
     const result = await generateMorningNBA(profile);
 
     // Record the action so history accumulates
@@ -200,10 +215,18 @@ const server = http.createServer(async (req, res) => {
 
     // Accept user response via POST body, or fall back to mock data for GET
     let userResponse: string;
+    let energyLevel = 3;
+    let sleepLastNight = profile.lifestyle.sleep_hours_avg;
     if (req.method === "POST") {
-      const body = JSON.parse(await readBody(req)) as { response?: string };
+      const body = JSON.parse(await readBody(req)) as {
+        response?: string;
+        energy_level?: number;
+        sleep_last_night?: number;
+      };
       userResponse = body.response ?? "";
       if (!userResponse) { json(res, { error: "Missing 'response' in POST body" }, 400); return; }
+      if (body.energy_level !== undefined) energyLevel = Math.min(5, Math.max(1, body.energy_level));
+      if (body.sleep_last_night !== undefined) sleepLastNight = body.sleep_last_night;
     } else {
       // GET fallback with mock responses for testing
       const mockResponses: Record<string, string> = {
@@ -233,8 +256,8 @@ const server = http.createServer(async (req, res) => {
       date: today(),
       action_taken: result.action_taken,
       notes: userResponse,
-      energy_level: 3, // default — could accept from POST body
-      sleep_last_night: profile.lifestyle.sleep_hours_avg, // default
+      energy_level: energyLevel,
+      sleep_last_night: sleepLastNight,
     });
 
     json(res, result);

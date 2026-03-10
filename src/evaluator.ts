@@ -1,7 +1,5 @@
-import Anthropic from "@anthropic-ai/sdk";
 import type { NBAOutput, EvalResult, UserProfile } from "./types.js";
-
-const MODEL = "claude-sonnet-4-20250514";
+import { client, MODEL } from "./config.js";
 
 const EVAL_SYSTEM_PROMPT = `You are a quality evaluator for a health coaching AI called Decade. Your job is to review a generated Next Best Action (NBA) and determine if it meets the quality bar before it gets sent to the user.
 
@@ -21,8 +19,6 @@ export async function evaluateNBA(
   profile: UserProfile,
   yesterdayAction: string | null
 ): Promise<EvalResult> {
-  const client = new Anthropic();
-
   const evalPrompt = `Here is the generated NBA to evaluate:
 
 MESSAGE: "${nba.message}"

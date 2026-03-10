@@ -1,4 +1,3 @@
-import Anthropic from "@anthropic-ai/sdk";
 import type { MessageParam, ContentBlockParam } from "@anthropic-ai/sdk/resources/messages/messages.js";
 import type { UserProfile, NBAOutput, EveningCheckInOutput, WeeklySummaryOutput } from "./types.js";
 import { determineFocusBiomarker } from "./logic/priority.js";
@@ -8,12 +7,10 @@ import { buildEveningPrompt } from "./prompts/evening.js";
 import { buildWeeklyPrompt } from "./prompts/weekly.js";
 import { TOOL_DEFINITIONS, handleToolCall } from "./tools.js";
 import { evaluateNBA } from "./evaluator.js";
+import { client, MODEL } from "./config.js";
 
-const MODEL = "claude-sonnet-4-20250514";
 const MAX_TOOL_ROUNDS = 10;
 const MAX_EVAL_RETRIES = 1;
-
-const client = new Anthropic();
 
 function parseJSON<T>(text: string): T {
   const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
