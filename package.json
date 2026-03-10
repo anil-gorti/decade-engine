@@ -1,0 +1,23 @@
+{
+  "name": "decade-engine",
+  "version": "1.0.0",
+  "description": "Decade Health — Prompt engine for personalized health coaching",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "tsx src/index.ts",
+    "morning": "tsx src/index.ts morning",
+    "evening": "tsx src/index.ts evening",
+    "weekly": "tsx src/index.ts weekly",
+    "all": "tsx src/index.ts all",
+    "dev": "tsx src/server.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0"
+  }
+}
