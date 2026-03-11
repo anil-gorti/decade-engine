@@ -7,11 +7,11 @@ import { buildWeeklyPrompt } from "./prompts/weekly.js";
 import { MASTER_SYSTEM_PROMPT, EVENING_SYSTEM_PROMPT } from "./prompts/system.js";
 import { loadProfile, listUsers, recordAction, recordCheckIn, hasActionToday } from "./store.js";
 import { getLastActionSummary, getDefaultEveningUserResponse } from "./shared.js";
-import { MAX_BODY_BYTES, DECADE_API_KEY, DECADE_CORS_ORIGIN } from "./config.js";
+import { MAX_BODY_BYTES, DECADE_API_KEY, DECADE_CORS_ORIGIN, IS_MOCK } from "./config.js";
 import { today } from "./util.js";
 
 const PORT = 3456;
-const DRY_RUN = !process.env.ANTHROPIC_API_KEY;
+const DRY_RUN = IS_MOCK;
 
 const CORS_ORIGIN = DECADE_CORS_ORIGIN || "*";
 
@@ -78,9 +78,9 @@ const server = http.createServer(async (req, res) => {
   try {
 
   if (path === "/") {
-    const userKeys = listUsers();
-    const users = userKeys.map((key) => {
-      const u = loadProfile(key);
+    const userKeys = await listUsers();
+    const users = await Promise.all(userKeys.map(async (key) => {
+      const u = await loadProfile(key);
       return {
         key,
         name: u.user.name,
@@ -93,7 +93,7 @@ const server = http.createServer(async (req, res) => {
         checkins: u.recent_checkins.length,
         actions: u.action_history.length,
       };
-    });
+    }));
 
     html(res, `<!DOCTYPE html>
 <html lang="en">
@@ -180,7 +180,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (path === "/api/health") {
-    json(res, { status: "ok", mode: DRY_RUN ? "dry-run" : "live", users: listUsers() });
+    json(res, { status: "ok", mode: DRY_RUN ? "dry-run" : "live", users: await listUsers() });
     return;
   }
 
@@ -193,7 +193,7 @@ const server = http.createServer(async (req, res) => {
     }
     const userName = morningMatch[1];
     let profile;
-    try { profile = loadProfile(userName); } catch { json(res, { error: "Unknown user" }, 404); return; }
+    try { profile = await loadProfile(userName); } catch { json(res, { error: "Unknown user" }, 404); return; }
 
     if (DRY_RUN) {
       profile.focus_biomarker = determineFocusBiomarker(profile);
@@ -207,8 +207,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // One NBA per user per day
-    if (hasActionToday(userName)) {
+    if (await hasActionToday(userName)) {
       json(res, { error: "NBA already generated today. Check back tomorrow morning." }, 429);
       return;
     }
@@ -235,7 +234,7 @@ const server = http.createServer(async (req, res) => {
     }
     const userName = eveningMatch[1];
     let profile;
-    try { profile = loadProfile(userName); } catch { json(res, { error: "Unknown user" }, 404); return; }
+    try { profile = await loadProfile(userName); } catch { json(res, { error: "Unknown user" }, 404); return; }
 
     const actionSummary = getLastActionSummary(profile);
 
@@ -295,7 +294,7 @@ const server = http.createServer(async (req, res) => {
     }
     const userName = weeklyMatch[1];
     let profile;
-    try { profile = loadProfile(userName); } catch { json(res, { error: "Unknown user" }, 404); return; }
+    try { profile = await loadProfile(userName); } catch { json(res, { error: "Unknown user" }, 404); return; }
 
     if (DRY_RUN) {
       profile.focus_biomarker = determineFocusBiomarker(profile);

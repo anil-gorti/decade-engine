@@ -8,12 +8,13 @@ import { loadProfile, listUsers, recordAction, recordCheckIn, recordCoachNote } 
 import { getLastActionSummary, getDefaultEveningUserResponse } from "./shared.js";
 import type { EngineMode } from "./types.js";
 import { today, setVerbose, setMockDate } from "./util.js";
+import { IS_MOCK } from "./config.js";
 
 const DIVIDER = "\u2500".repeat(60);
 const DRY_RUN = process.argv.includes("--dry-run");
 
 const SIMULATE_WEEK = process.argv.includes("--simulate-week");
-const MOCK_MODE = !process.env.ANTHROPIC_API_KEY && !DRY_RUN;
+const MOCK_MODE = IS_MOCK && !DRY_RUN;
 
 // CLI always runs verbose so you see tool calls and eval results
 setVerbose(true);
@@ -25,7 +26,7 @@ if (MOCK_MODE) {
 }
 
 async function runMorning(userName: string) {
-  const profile = loadProfile(userName);
+  const profile = await loadProfile(userName);
 
   console.log(`\n${DIVIDER}`);
   console.log(`MORNING NBA \u2014 ${profile.user.name} (${profile.user.city})`);
@@ -57,7 +58,7 @@ async function runMorning(userName: string) {
 }
 
 async function runEvening(userName: string) {
-  const profile = loadProfile(userName);
+  const profile = await loadProfile(userName);
 
   const actionSummary = getLastActionSummary(profile);
   const userResponse = getDefaultEveningUserResponse(userName);
@@ -97,7 +98,7 @@ async function runEvening(userName: string) {
 }
 
 async function runWeekly(userName: string) {
-  const profile = loadProfile(userName);
+  const profile = await loadProfile(userName);
 
   console.log(`\n${DIVIDER}`);
   console.log(`WEEKLY SUMMARY \u2014 ${profile.user.name}`);
@@ -120,7 +121,7 @@ async function main() {
   const args = process.argv.filter((a) => !a.startsWith("--"));
   const mode = (args[2] || "all") as EngineMode | "all";
   const userArg = args[3];
-  const users = userArg ? [userArg] : listUsers();
+  const users = userArg ? [userArg] : await listUsers();
 
   console.log(`Decade Engine v1.0`);
   console.log(`Mode: ${mode} | Users: ${users.join(", ")} | Dry run: ${DRY_RUN} | Mock: ${MOCK_MODE} | Simulate Week: ${SIMULATE_WEEK}\n`);

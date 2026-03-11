@@ -1,7 +1,10 @@
+import type Anthropic from "@anthropic-ai/sdk";
 import type { NBAOutput, EvalResult, UserProfile } from "./types.js";
-import { client, MODEL } from "./config.js";
+import { llm, MODEL } from "./config.js";
 import { EvalResultSchema } from "./schema.js";
 import { parseLLMJSON, LLMParseError } from "./util.js";
+
+type TextBlock = Anthropic.Messages.TextBlock;
 
 const EVAL_SYSTEM_PROMPT = `You are a quality evaluator for a health coaching AI called Decade. Your job is to review a generated Next Best Action (NBA) and determine if it meets the quality bar before it gets sent to the user.
 
@@ -43,26 +46,20 @@ CONTEXT:
 
 Does this NBA pass all 6 criteria? Return JSON with "pass" and "critique".`;
 
-  let text: string;
-  if (!process.env.ANTHROPIC_API_KEY) {
-    // Mock response
-    await new Promise((r) => setTimeout(r, 800));
-    text = JSON.stringify({ pass: true, critique: "" });
-  } else {
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: 256,
-      system: EVAL_SYSTEM_PROMPT,
-      messages: [{ role: "user", content: evalPrompt }],
-    });
-    text = response.content[0].type === "text" ? response.content[0].text : "";
-  }
+  const response = await llm.createMessage({
+    model: MODEL,
+    max_tokens: 256,
+    system: EVAL_SYSTEM_PROMPT,
+    messages: [{ role: "user", content: evalPrompt }],
+  });
+
+  const textBlock = response.content.find((b): b is TextBlock => b.type === "text");
+  const text = textBlock?.text ?? "";
 
   try {
     const parsed = parseLLMJSON<unknown>(text);
     return EvalResultSchema.parse(parsed) as EvalResult;
   } catch (err) {
-    // Fail-closed: if eval output is unparseable, reject the NBA
     if (err instanceof LLMParseError) {
       console.error("[evaluateNBA] Eval output parse failed:", err.code, err.rawPreview);
     } else {
