@@ -1,10 +1,15 @@
-import { generateMorningNBA, generateEveningCheckIn, generateWeeklySummary } from "./engine.js";
+import {
+  extractActionText,
+  generateMorningNBA,
+  generateEveningCheckIn,
+  generateWeeklySummary,
+} from "./engine.js";
 import { determineFocusBiomarker } from "./logic/priority.js";
 import { buildMorningPrompt } from "./prompts/morning.js";
 import { buildEveningPrompt } from "./prompts/evening.js";
 import { buildWeeklyPrompt } from "./prompts/weekly.js";
 import { MASTER_SYSTEM_PROMPT, EVENING_SYSTEM_PROMPT, WEEKLY_SYSTEM_PROMPT } from "./prompts/system.js";
-import { loadProfile, listUsers, recordAction, recordCheckIn } from "./store.js";
+import { hasActionToday, loadProfile, listUsers, recordAction, recordCheckIn } from "./store.js";
 import type { EngineMode } from "./types.js";
 
 const DIVIDER = "\u2500".repeat(60);
@@ -35,17 +40,26 @@ async function runMorning(userName: string) {
     return;
   }
 
+  if (hasActionToday(userName)) {
+    console.log("Morning NBA already generated today. Skipping duplicate action.");
+    return;
+  }
+
   const result = await generateMorningNBA(profile);
   console.log(`\nWhatsApp message:\n"${result.message}"\n`);
   console.log("Metadata:", JSON.stringify(result.metadata, null, 2));
 
   // Persist the action
-  recordAction(userName, {
+  const recorded = recordAction(userName, {
     date: today(),
-    action: result.metadata.action_summary,
+    action: extractActionText(result.message, result.metadata.action_summary),
     category: result.metadata.action_category,
   });
-  console.log(`\u2713 Action recorded to data/${userName}.json`);
+  if (recorded) {
+    console.log(`\u2713 Action recorded to data/${userName}.json`);
+  } else {
+    console.log("Morning action was already recorded for today.");
+  }
 
   return result;
 }

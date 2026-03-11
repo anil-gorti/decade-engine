@@ -14,11 +14,49 @@ Return ONLY valid JSON with two fields:
 - "pass": boolean
 - "critique": string (empty if pass is true, otherwise a specific 1-2 sentence explanation of what's wrong)`;
 
+function buildPerformanceContext(profile: UserProfile): {
+  completionRate: number;
+  currentStreak: number;
+  averageEnergy: number;
+  recentEnergy: string;
+} {
+  const recentCheckins = profile.recent_checkins.slice(-7);
+  const completed = recentCheckins.filter((checkin) => checkin.action_taken).length;
+  const completionRate = recentCheckins.length > 0
+    ? Math.round((completed / recentCheckins.length) * 100)
+    : 0;
+
+  let currentStreak = 0;
+  for (let i = profile.recent_checkins.length - 1; i >= 0; i -= 1) {
+    if (!profile.recent_checkins[i].action_taken) {
+      break;
+    }
+    currentStreak += 1;
+  }
+
+  const energyValues = recentCheckins.map((checkin) => checkin.energy_level);
+  const averageEnergy = energyValues.length > 0
+    ? Math.round((energyValues.reduce((sum, value) => sum + value, 0) / energyValues.length) * 10) / 10
+    : 0;
+
+  const recentEnergy = recentCheckins.slice(-3)
+    .map((checkin) => `${checkin.date}: ${checkin.energy_level}/5 after ${checkin.sleep_last_night}h sleep`)
+    .join("; ");
+
+  return {
+    completionRate,
+    currentStreak,
+    averageEnergy,
+    recentEnergy: recentEnergy || "No recent energy readings",
+  };
+}
+
 export async function evaluateNBA(
   nba: NBAOutput,
   profile: UserProfile,
   yesterdayAction: string | null
 ): Promise<EvalResult> {
+  const performance = buildPerformanceContext(profile);
   const evalPrompt = `Here is the generated NBA to evaluate:
 
 MESSAGE: "${nba.message}"
@@ -36,6 +74,10 @@ CONTEXT:
 - Travelling: ${profile.chaos_context.travel}
 - Festival: ${profile.chaos_context.festival_or_event ?? "None"}
 - Work intensity: ${profile.chaos_context.work_intensity}
+- Completion rate (last 7 check-ins): ${performance.completionRate}%
+- Current completion streak: ${performance.currentStreak}
+- Average energy (last 7 check-ins): ${performance.averageEnergy}/5
+- Recent energy trend: ${performance.recentEnergy}
 
 Does this NBA pass all 5 criteria? Return JSON with "pass" and "critique".`;
 

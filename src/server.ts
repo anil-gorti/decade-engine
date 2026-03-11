@@ -1,5 +1,10 @@
 import http from "node:http";
-import { generateMorningNBA, generateEveningCheckIn, generateWeeklySummary } from "./engine.js";
+import {
+  extractActionText,
+  generateMorningNBA,
+  generateEveningCheckIn,
+  generateWeeklySummary,
+} from "./engine.js";
 import { determineFocusBiomarker } from "./logic/priority.js";
 import { buildMorningPrompt } from "./prompts/morning.js";
 import { buildEveningPrompt } from "./prompts/evening.js";
@@ -194,11 +199,15 @@ const server = http.createServer(async (req, res) => {
     const result = await generateMorningNBA(profile);
 
     // Record the action so history accumulates
-    recordAction(userName, {
+    const recorded = recordAction(userName, {
       date: today(),
-      action: result.metadata.action_summary,
+      action: extractActionText(result.message, result.metadata.action_summary),
       category: result.metadata.action_category,
     });
+    if (!recorded) {
+      json(res, { error: "NBA already generated today. Check back tomorrow morning." }, 429);
+      return;
+    }
 
     json(res, result);
     return;

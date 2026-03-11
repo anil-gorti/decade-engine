@@ -76,10 +76,14 @@ export function hasActionToday(userName: string): boolean {
 /**
  * Append an action to the user's history and save.
  */
-export function recordAction(userName: string, action: ActionRecord): void {
+export function recordAction(userName: string, action: ActionRecord): boolean {
   const profile = loadProfile(userName);
+  if (profile.action_history.some((existing) => existing.date === action.date)) {
+    return false;
+  }
   profile.action_history.push(action);
   saveProfile(userName, profile);
+  return true;
 }
 
 /**

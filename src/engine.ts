@@ -17,6 +17,15 @@ function parseJSON<T>(text: string): T {
   return JSON.parse(cleaned) as T;
 }
 
+export function extractActionText(message: string, fallback: string): string {
+  const firstSentence = message
+    .split(/(?<=[.!?])\s+/)
+    .map((part) => part.trim())
+    .find(Boolean);
+
+  return firstSentence ?? fallback;
+}
+
 /**
  * Run the agentic tool-use loop: send messages, handle tool calls,
  * repeat until the model produces a final text response.
